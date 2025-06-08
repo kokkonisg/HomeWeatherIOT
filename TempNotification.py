@@ -16,31 +16,52 @@ from win10toast import ToastNotifier
 # TODO:
 #   Using an ESP8266 get temp inside the house using a DS18B20 sensor
 tempIn = float(input("Enter temperature in Celsius: "))
-response = requests.post(    
-    url = 'http://localhost:8080/temperature',
-    json = {'timestamp': time.strftime('%H:%M:%S', time.localtime()),'temperature_c': str(tempIn)}
-)
-print(response.status_code, response.reason, response.text)
+try:
+    response = requests.post(    
+        url = 'http://localhost:8080/temperature',
+        json = {'timestamp': time.strftime('%H:%M:%S', time.localtime()),'temperature_c': str(tempIn)}
+    )
+except requests.exceptions.RequestException as e:
+    print(f"Error fetching weather data: {e}")
 # -----------------------------------------------------------------------------------------------------------
 
+# Get coord and API key from info.txt
+with open('info.txt', 'r') as f:
+    info = f.read().strip().split(',')
+
 # Get current weather data from OpenWeatherMap API
-with open('coords.txt', 'r') as f:
-    coords = f.read().strip().split(',')
-httpOWMReq = requests.get(
-    url=f'https://api.openweathermap.org/data/2.5/weather?lat={coords[0]}&lon={coords[1]}&units=metric&appid={coords[2]}',
-)
-weatherData = httpOWMReq.json()
-tempOut = weatherData['main']['temp']
+try:
+    httpOWMReq = requests.get(
+        url=f'https://api.openweathermap.org/data/2.5/weather?lat={info[0]}&lon={info[1]}&appid={info[2]}&units=metric',
+    )
+except requests.exceptions.RequestException as e:
+    print(f"Error fetching weather data: {e}")
+
+curWeatherData = httpOWMReq.json()
+tempOut = curWeatherData['main']['temp']
+
+# Get forecast data from OpenWeatherMap API
+try:
+    httpOWMForecastReq = requests.get(
+        url=f'https://api.openweathermap.org/data/2.5/forecast?lat={info[0]}&lon={info[1]}&appid={info[2]}&units=metric&cnt=2',
+    )
+    nextWeatherData = httpOWMForecastReq.json()['list'][1]
+except requests.exceptions.RequestException as e:
+    print(f"Error fetching weather data: {e}")
+    
 
 # Get temperature data from the local server
-httpHomeReq = requests.get(
-    url = 'http://localhost:8080/temperature',
-)
-homeData = httpHomeReq.json()
-# tempIn = homeData['temperature_c']
+try:
+    httpHomeReq = requests.get(
+        url = 'http://localhost:8080/temperature',
+    )
+    homeData = httpHomeReq.json()
+    # tempIn = homeData['temperature_c']
+except requests.exceptions.RequestException as e:
+    print(f"Error fetching weather data: {e}")
 
 # Check weather conditions in case of rain
-willRain = weatherData['weather'][0]['main'] in ['Rain', 'Drizzle', 'Thunderstorm']
+willRain = nextWeatherData['weather'][0]['main'] in ['Rain', 'Drizzle', 'Thunderstorm']
 # print(f'Temp right now is {tempOut} C outside.') # Just for testing
 
 
@@ -61,7 +82,7 @@ if tempIn > tempOut:
 if willRain:
     toaster.show_toast(
         "Get your Boogada!!!",
-        f'Its about to get {weatherData['weather'][0]['main']}y outside.',
+        f'Its about to get {nextWeatherData['weather'][0]['main']}y outside.',
         duration = 5,
         icon_path = "./favicon.ico",
         threaded=False
